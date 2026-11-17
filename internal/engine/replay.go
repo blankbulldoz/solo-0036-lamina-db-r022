@@ -60,6 +60,21 @@ func (d *DB) apply(r journal.Record) error {
 		}
 		d.store.Vacuum(r.Horizon)
 		d.horizon = r.Horizon
+	case "analyze":
+		if r.Statistics == nil {
+			return fmt.Errorf("invalid statistics record")
+		}
+		relation, err := d.catalog.Relation(r.Statistics.Relation)
+		if err != nil {
+			return err
+		}
+		if r.Statistics.AsOf+1 != r.Sequence {
+			return fmt.Errorf("statistics record scope mismatch")
+		}
+		if err := r.Statistics.Validate(relation); err != nil {
+			return err
+		}
+		d.statistics[r.Statistics.Relation] = r.Statistics.Clone()
 	default:
 		return fmt.Errorf("unknown record kind %s", r.Kind)
 	}

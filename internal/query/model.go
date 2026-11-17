@@ -26,12 +26,26 @@ type Request struct {
 	Aggregate   *Aggregate  `json:"aggregate,omitempty"`
 	ForceScan   bool        `json:"force_scan,omitempty"`
 }
-type Plan struct {
+
+// Estimate is the planner's predicted candidate count for one considered
+// access path. Estimates explain why a path was chosen; they are never
+// execution facts and never influence the rows a query returns.
+type Estimate struct {
 	Access     string `json:"access"`
 	Index      string `json:"index,omitempty"`
+	Column     string `json:"column,omitempty"`
+	Op         string `json:"op,omitempty"`
 	Candidates int    `json:"candidates"`
-	Snapshot   uint64 `json:"snapshot"`
-	Residuals  int    `json:"residuals"`
+}
+type Plan struct {
+	Access     string     `json:"access"`
+	Index      string     `json:"index,omitempty"`
+	Candidates int        `json:"candidates"`
+	Snapshot   uint64     `json:"snapshot"`
+	Residuals  int        `json:"residuals"`
+	Basis      string     `json:"basis"`
+	StatsAt    uint64     `json:"stats_at,omitempty"`
+	Estimates  []Estimate `json:"estimates,omitempty"`
 }
 type Result struct {
 	Rows      []datum.Row `json:"rows"`

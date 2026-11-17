@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bounded production walkthroughs using only the public HTTP service."""
 import argparse, concurrent.futures, json, os, pathlib, shutil, socket, subprocess, tempfile, time, urllib.request, urllib.error
-WORKFLOWS=['catalog-create','txn-write','snapshot-read','index-build','query-plan','sql-execute','txn-conflict','restart','checkpoint','backup-restore','changes','vacuum','transaction-close','statistics']
+WORKFLOWS=['catalog-create','txn-write','snapshot-read','index-build','query-plan','sql-execute','txn-conflict','restart','checkpoint','backup-restore','changes','vacuum','transaction-close','statistics','planner-stats']
 class Session:
  def __init__(self,binary,root,restore=None):
   self.binary=str(binary);self.root=pathlib.Path(root);self.restore=restore;self.process=None;self.log=None
@@ -152,6 +152,39 @@ def walkthrough(name,binary):
     q=s.query(where=[{'column':'amplitude','op':'>=','value':40}],limit=2)
     require(q['matched']==3 and q['scanned']==3 and len(q['rows'])==2 and q['truncated'],'query fact meanings conflated')
     observations={'query':q,'stats':s.stats()}
+   elif name=='planner-stats':
+    s.call('POST','/indexes',{'name':'by_amplitude','relation':'spectra','column':'amplitude'},201)
+    q1={'where':[{'column':'amplitude','op':'>=','value':40}]}
+    exact=s.query(**q1);require(exact['plan']['basis']=='exact','statistics used before any analyze')
+    s.call('POST','/analyze',{'relation':'spectra','columns':['missing']},400)
+    s.call('POST','/analyze',{'relation':'missing'},400)
+    s.call('POST','/analyze',{'relation':'spectra','sample':-1},400)
+    st=s.call('POST','/analyze',{'relation':'spectra'})
+    require(st['rows']==7 and st['sampled']==7 and st['as_of']<s.stats()['sequence'],'analyze scope wrong')
+    amp=st['columns']['amplitude'];require(amp['nulls']==1 and amp['distinct']==6 and amp['min']==10 and amp['max']==60,'column distribution wrong')
+    view=s.call('GET','/statistics');require(view['sequence']==s.stats()['sequence'] and view['relations'][0]['as_of']==st['as_of'],'statistics view scope wrong')
+    est=s.query(**q1)
+    require(est['plan']['basis']=='estimate' and est['plan']['stats_at']==st['as_of'],'estimate basis missing')
+    require(est['rows']==exact['rows'] and est['matched']==3 and est['plan']['candidates']==3,'estimate changed results or actuals')
+    paths={(e['access'],e.get('index')):e['candidates'] for e in est['plan']['estimates']}
+    require(paths[('scan',None)]==7 and 0<=paths[('index','by_amplitude')]<7,'considered paths not explained')
+    tx=s.begin()
+    for n in range(8,68):s.put(tx,{'sample':n,'band':f'b{n}','amplitude':5,'valid':True})
+    s.commit(tx)
+    q2={'where':[{'column':'amplitude','op':'<=','value':5}]}
+    stale=s.query(**q2);scan=s.query(force_scan=True,**q2)
+    require(stale['rows']==scan['rows'] and stale['matched']==60,'stale estimate changed results')
+    skew={(e['access'],e.get('index')):e['candidates'] for e in stale['plan']['estimates']}
+    require(skew[('index','by_amplitude')]==0 and stale['plan']['candidates']==60 and stale['plan']['stats_at']<stale['plan']['snapshot'],'staleness not separated from actuals')
+    st2=s.call('POST','/analyze',{'relation':'spectra','columns':['amplitude'],'sample':10})
+    require(st2['rows']==67 and st2['sampled']==10 and list(st2['columns'])==['amplitude'],'sample scope wrong')
+    s.stop();s.start()
+    resumed=s.call('GET','/statistics');require(resumed['relations'][0]['as_of']==st2['as_of'],'statistics lost across restart')
+    require(s.query(**q1)['plan']['basis']=='estimate','restarted planner not estimating')
+    s.call('POST','/checkpoint');s.stop();s.start()
+    require(s.call('GET','/statistics')['relations'][0]['as_of']==st2['as_of'],'checkpoint lost statistics')
+    require(s.query(**q2)['matched']==60,'results changed after restarts')
+    observations={'analyzed':st,'estimate_plan':est['plan'],'stale_plan':stale['plan'],'sampled_rows':st2['sampled']}
    else:raise ValueError(name)
    return {'workflow':name,'status':'observed','observations':observations}
   finally:

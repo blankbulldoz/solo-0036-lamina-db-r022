@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"lamina/internal/catalog"
+	"lamina/internal/stats"
 	"lamina/internal/versions"
 	"os"
 )
@@ -14,11 +15,12 @@ import (
 const MaxImage = 128 << 20
 
 type Image struct {
-	Format   int              `json:"format"`
-	Sequence uint64           `json:"sequence"`
-	Horizon  uint64           `json:"horizon"`
-	Catalog  *catalog.Catalog `json:"catalog"`
-	Store    *versions.Store  `json:"store"`
+	Format     int                    `json:"format"`
+	Sequence   uint64                 `json:"sequence"`
+	Horizon    uint64                 `json:"horizon"`
+	Catalog    *catalog.Catalog       `json:"catalog"`
+	Store      *versions.Store        `json:"store"`
+	Statistics map[string]stats.Table `json:"statistics,omitempty"`
 }
 type Envelope struct {
 	Format  int             `json:"format"`
@@ -87,6 +89,18 @@ func Validate(image Image) error {
 		}
 		if _, ok := relation.Column(definition.Column); !ok {
 			return fmt.Errorf("invalid index column")
+		}
+	}
+	for name, t := range image.Statistics {
+		relation, ok := image.Catalog.Relations[name]
+		if !ok {
+			return fmt.Errorf("statistics reference unknown relation")
+		}
+		if t.AsOf > image.Sequence {
+			return fmt.Errorf("statistics beyond image sequence")
+		}
+		if err := t.Validate(relation); err != nil {
+			return err
 		}
 	}
 	for name, rows := range image.Store.Tables {

@@ -5,13 +5,21 @@ import (
 	"lamina/internal/index"
 	"lamina/internal/journal"
 	"lamina/internal/snapshot"
+	"lamina/internal/stats"
 	"lamina/internal/versions"
 	"os"
 	"path/filepath"
 )
 
 func (d *DB) image() snapshot.Image {
-	return snapshot.Image{Format: 1, Sequence: d.sequence, Horizon: d.horizon, Catalog: d.catalog.Clone(), Store: d.store.Clone()}
+	var tables map[string]stats.Table
+	if len(d.statistics) > 0 {
+		tables = make(map[string]stats.Table, len(d.statistics))
+		for name, t := range d.statistics {
+			tables[name] = t.Clone()
+		}
+	}
+	return snapshot.Image{Format: 1, Sequence: d.sequence, Horizon: d.horizon, Catalog: d.catalog.Clone(), Store: d.store.Clone(), Statistics: tables}
 }
 func (d *DB) Checkpoint() (uint64, error) {
 	d.mu.Lock()

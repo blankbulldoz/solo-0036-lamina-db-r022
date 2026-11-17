@@ -6,6 +6,7 @@ import (
 	"lamina/internal/index"
 	"lamina/internal/journal"
 	"lamina/internal/snapshot"
+	"lamina/internal/stats"
 	"lamina/internal/versions"
 	"os"
 	"path/filepath"
@@ -22,6 +23,7 @@ type DB struct {
 	sequence     uint64
 	horizon      uint64
 	transactions map[string]*Transaction
+	statistics   map[string]stats.Table
 	closed       bool
 	commits      uint64
 	conflicts    uint64
@@ -47,12 +49,15 @@ func Open(dir string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := &DB{dir: absolute, catalog: catalog.New(), store: versions.New(), wal: w, transactions: map[string]*Transaction{}}
+	d := &DB{dir: absolute, catalog: catalog.New(), store: versions.New(), wal: w, transactions: map[string]*Transaction{}, statistics: map[string]stats.Table{}}
 	if !missing {
 		d.catalog = image.Catalog
 		d.store = image.Store
 		d.sequence = image.Sequence
 		d.horizon = image.Horizon
+		for name, t := range image.Statistics {
+			d.statistics[name] = t
+		}
 	}
 	last := w.Base + uint64(len(w.Records))
 	if d.sequence > last {

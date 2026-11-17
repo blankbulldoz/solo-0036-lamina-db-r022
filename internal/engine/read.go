@@ -3,6 +3,7 @@ package engine
 import (
 	"lamina/internal/datum"
 	"lamina/internal/query"
+	"lamina/internal/stats"
 )
 
 func (d *DB) Query(q query.Request) (query.Result, error) {
@@ -41,7 +42,11 @@ func (d *DB) Query(q query.Request) (query.Result, error) {
 	if tx != nil && len(tx.writes[q.Relation]) > 0 {
 		q.ForceScan = true
 	}
-	plan, keys := query.Choose(d.catalog, d.indexes, q, at, len(d.store.Tables[q.Relation]))
+	var st *stats.Table
+	if t, ok := d.statistics[q.Relation]; ok {
+		st = &t
+	}
+	plan, keys := query.Choose(d.catalog, d.indexes, q, at, len(d.store.Tables[q.Relation]), st)
 	rows := map[string]datum.Row{}
 	if plan.Access == "index" {
 		for _, key := range keys {

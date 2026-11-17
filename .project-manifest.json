@@ -62,6 +62,12 @@
       "name": "syntax",
       "path": "internal/syntax",
       "responsibility": "SQL subset lexer/parser to the same bound query and transaction semantics"
+    },
+    {
+      "id": "stats",
+      "name": "stats",
+      "path": "internal/stats",
+      "responsibility": "relation and column distribution statistics, sampling scope and estimate-only path selection"
     }
   ],
   "workflows": [
@@ -368,6 +374,32 @@
       "success": "query execution facts and database resource state produces a verified domain result",
       "failure": "candidates vs scanned vs returned have distinct meanings",
       "verification": "python3 examples/walkthrough.py --workflow statistics"
+    },
+    {
+      "id": "planner-stats",
+      "name": "persisted planner statistics and estimate-based path selection",
+      "entry": "POST /analyze and GET /statistics",
+      "steps": [
+        "transport",
+        "engine",
+        "stats",
+        "journal",
+        "snapshot",
+        "query",
+        "index"
+      ],
+      "module_ids": [
+        "transport",
+        "engine",
+        "stats",
+        "journal",
+        "snapshot",
+        "query",
+        "index"
+      ],
+      "success": "persisted planner statistics and estimate-based path selection produces a verified domain result",
+      "failure": "stale or partial statistics never change results; uncovered columns fall back to exact enumeration",
+      "verification": "python3 examples/walkthrough.py --workflow planner-stats"
     }
   ],
   "complexity": {

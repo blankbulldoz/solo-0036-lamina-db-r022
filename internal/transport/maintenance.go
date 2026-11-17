@@ -46,6 +46,30 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, 200, out)
 }
+func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Relation string   `json:"relation"`
+		Columns  []string `json:"columns,omitempty"`
+		Sample   int      `json:"sample,omitempty"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	out, err := s.db.Analyze(in.Relation, in.Columns, in.Sample)
+	if err != nil {
+		respondError(w, err)
+		return
+	}
+	write(w, 200, out)
+}
+func (s *Server) statistics(w http.ResponseWriter, r *http.Request) {
+	out, err := s.db.Statistics()
+	if err != nil {
+		respondError(w, err)
+		return
+	}
+	write(w, 200, out)
+}
 func (s *Server) changes(w http.ResponseWriter, r *http.Request) {
 	after := uint64(0)
 	limit := 100
